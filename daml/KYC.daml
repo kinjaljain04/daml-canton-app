@@ -1,0 +1,94 @@
+
+-- KYC.daml
+-- Know Your Customer identity contract on Canton Network
+--
+-- KYC is what every bank does before letting someone transact.
+-- It stores sensitive personal data: name, date of birth, passport number.
+-- This is exactly the domain GDPR-001 in CompliDaml covers.
+--
+-- GDPR rules this contract satisfies:
+--   GDPR-001: PII fields NOT exposed to unnecessary observers   ✅
+--   GDPR-002: Archive choice exists (right to erasure Art.17)   ✅
+--   GDPR-003: Minimal fields — only what is necessary           ✅
+--
+-- Canton Baseline rules satisfied:
+--   CB-001: Archive choice present                              ✅
+--   CB-002: Signatory declared                                  ✅
+--   CB-003: Ensure clause present                               ✅
+--   CB-005: Every choice has explicit controller                ✅
+
+module KYC where
+
+import Daml.Script
+import DA.Time
+
+-- KYCStatus represents where a customer is in the verification process
+data KYCStatus
+  = Pending    -- submitted, not yet reviewed
+  | Approved   -- identity verified
+  | Rejected   -- identity check failed
+  | Expired    -- verification has lapsed
+    deriving (Show, Eq)
+
+-- KYCRecord: the main contract
+-- Represents a verified identity record between a bank and a customer
+template KYCRecord
+  with
+    bank          : Party   -- the financial institution doing the KYC
+    customer      : Party   -- the person being verified
+    fullName      : Text    -- PII: full legal name
+    nationality   : Text    -- country of citizenship
+    documentType  : Text    -- "PASSPORT", "NATIONAL_ID", "DRIVING_LICENSE"
+    documentId    : Text    -- PII: document number (e.g. passport number)
+    status        : KYCStatus
+    submittedAt   : Time    -- when the KYC was submitted
+  where
+    -- CB-002: bank is the signatory — they are responsible for this record
+    signatory bank
+
+    -- GDPR-001 CORRECT: customer observes their OWN record only.
+    -- No third party (regulator, other bank) is listed as observer.
+    -- This is the privacy-correct pattern.
+    observer customer
+
+    -- CB-003: ensure prevents empty or nonsensical records
+    ensure fullName /= "" && documentId /= ""
+
+    -- CHOICE: Approve
+    choice Approve : ContractId KYCRecord
+      controller bank
+      do
+        create this with status = Approved
+
+    -- CHOICE: Reject
+    choice Reject : ContractId KYCRecord
+      controller bank
+      do
+        create this with status = Rejected
+
+    -- CHOICE: Expire
+    choice Expire : ContractId KYCRecord
+      controller bank
+      do
+        create this with status = Expired
+
+    -- CHOICE: Archive (CB-001 + GDPR Art.17)
+    choice Archive : ()
+      controller bank
+      do
+        return ()
+
+
+-- BadKYCRecord: intentionally broken version to demonstrate GDPR-001
+template BadKYCRecord
+  with
+    bank       : Party
+    customer   : Party
+    regulator  : Party   -- ❌ unnecessary third-party observer
+    fullName   : Text    -- PII visible to regulator
+    documentId : Text    -- PII visible to regulator — GDPR-001 violation
+    status     : KYCStatus
+  where
+    signatory bank
+    observer customer, regulator
+    ensure fullName /= ""
