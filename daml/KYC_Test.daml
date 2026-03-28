@@ -1,0 +1,141 @@
+
+-- KYC_Test.daml
+-- Daml Script tests for the KYC contract
+-- Run with: dpm test
+
+module KYC_Test where
+
+import Daml.Script
+import DA.Time
+import KYC
+
+-- TEST 1: Bank creates a KYC record for a customer
+testCreateKYC : Script ()
+testCreateKYC = do
+  bank     <- allocatePartyWithHint "HSBC"  (PartyIdHint "HSBC")
+  customer <- allocatePartyWithHint "Alice" (PartyIdHint "Alice")
+  now      <- getTime
+
+  kycId <- submit bank do
+    createCmd KYCRecord with
+      bank         = bank
+      customer     = customer
+      fullName     = "Alice Johnson"
+      nationality  = "British"
+      documentType = "PASSPORT"
+      documentId   = "GB123456789"
+      status       = Pending
+      submittedAt  = now
+
+  Some kyc <- queryContractId bank kycId
+  assertMsg "Status should be Pending"    (kyc.status   == Pending)
+  assertMsg "Bank should be HSBC"         (kyc.bank     == bank)
+  assertMsg "Customer should be Alice"    (kyc.customer == customer)
+
+  debug "TEST 1 PASSED: Bank created KYC record"
+  return ()
+
+-- TEST 2: Bank approves the KYC
+testApproveKYC : Script ()
+testApproveKYC = do
+  bank     <- allocatePartyWithHint "HSBC"  (PartyIdHint "HSBC")
+  customer <- allocatePartyWithHint "Alice" (PartyIdHint "Alice")
+  now      <- getTime
+
+  kycId <- submit bank do
+    createCmd KYCRecord with
+      bank         = bank
+      customer     = customer
+      fullName     = "Alice Johnson"
+      nationality  = "British"
+      documentType = "PASSPORT"
+      documentId   = "GB123456789"
+      status       = Pending
+      submittedAt  = now
+
+  approvedId <- submit bank do
+    exerciseCmd kycId Approve
+
+  Some approved <- queryContractId bank approvedId
+  assertMsg "Status should be Approved" (approved.status == Approved)
+
+  debug "TEST 2 PASSED: Bank approved KYC"
+  return ()
+
+-- TEST 3: Bank archives KYC (GDPR right to erasure)
+testArchiveKYC : Script ()
+testArchiveKYC = do
+  bank     <- allocatePartyWithHint "HSBC"  (PartyIdHint "HSBC")
+  customer <- allocatePartyWithHint "Alice" (PartyIdHint "Alice")
+  now      <- getTime
+
+  kycId <- submit bank do
+    createCmd KYCRecord with
+      bank         = bank
+      customer     = customer
+      fullName     = "Alice Johnson"
+      nationality  = "British"
+      documentType = "PASSPORT"
+      documentId   = "GB123456789"
+      status       = Approved
+      submittedAt  = now
+
+  submit bank do
+    exerciseCmd kycId Archive
+
+  result <- queryContractId bank kycId
+  assertMsg "KYC archived — personal data erased" (result == None)
+
+  debug "TEST 3 PASSED: KYC archived for GDPR erasure"
+  return ()
+
+-- TEST 4: Customer cannot approve their own KYC
+testCustomerCannotApprove : Script ()
+testCustomerCannotApprove = do
+  bank     <- allocatePartyWithHint "HSBC"  (PartyIdHint "HSBC")
+  customer <- allocatePartyWithHint "Alice" (PartyIdHint "Alice")
+  now      <- getTime
+
+  kycId <- submit bank do
+    createCmd KYCRecord with
+      bank         = bank
+      customer     = customer
+      fullName     = "Alice Johnson"
+      nationality  = "British"
+      documentType = "PASSPORT"
+      documentId   = "GB123456789"
+      status       = Pending
+      submittedAt  = now
+
+  submitMustFail customer do
+    exerciseCmd kycId Approve
+
+  debug "TEST 4 PASSED: Customer correctly blocked from self-approving"
+  return ()
+
+-- TEST 5: Reject then expire workflow
+testRejectWorkflow : Script ()
+testRejectWorkflow = do
+  bank     <- allocatePartyWithHint "HSBC" (PartyIdHint "HSBC")
+  customer <- allocatePartyWithHint "Bob"  (PartyIdHint "Bob")
+  now      <- getTime
+
+  kycId <- submit bank do
+    createCmd KYCRecord with
+      bank         = bank
+      customer     = customer
+      fullName     = "Bob Smith"
+      nationality  = "American"
+      documentType = "NATIONAL_ID"
+      documentId   = "US987654321"
+      status       = Pending
+      submittedAt  = now
+
+  rejectedId <- submit bank do
+    exerciseCmd kycId Reject
+
+  Some rejected <- queryContractId bank rejectedId
+  assertMsg "Status is Rejected" (rejected.status == Rejected)
+
+  debug "TEST 5 PASSED: Reject workflow correct"
+  return ()
