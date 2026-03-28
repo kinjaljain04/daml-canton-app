@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Canton KYC Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f7f6f3; color: #1a1a1a; padding: 24px; }
+  .header { background: #1a1a1a; color: #fff; padding: 20px 24px; border-radius: 12px; margin-bottom: 20px; }
+  .header h1 { font-size: 20px; font-weight: 600; }
+  .header p { font-size: 12px; color: #aaa; margin-top: 4px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .stat { background: #fff; border: 1px solid #e0ded9; border-radius: 10px; padding: 16px; text-align: center; }
+  .stat-num { font-size: 28px; font-weight: 700; color: #1a1a1a; }
+  .stat-lbl { font-size: 11px; color: #888; margin-top: 4px; }
+  .card { background: #fff; border: 1px solid #e0ded9; border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+  .card-title { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: #1a1a1a; }
+  .kyc-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f0eeea; font-size: 12px; }
+  .kyc-row:last-child { border-bottom: none; }
+  .name { font-weight: 500; color: #1a1a1a; }
+  .bank { color: #888; }
+  .badge { padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 600; }
+  .Approved { background: #EAF3DE; color: #27500A; }
+  .Pending  { background: #FAEEDA; color: #633806; }
+  .Rejected { background: #FCEBEB; color: #791F1F; }
+  .Expired  { background: #f0eeea; color: #888; }
+  .url-bar { background: #f0eeea; border-radius: 8px; padding: 8px 14px; font-family: monospace; font-size: 11px; color: #555; margin-bottom: 12px; }
+  .connect-btn { background: #1a1a1a; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .connect-btn:hover { background: #333; }
+  .privacy-note { background: #E6F1FB; border: 1px solid #B5D4F4; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #042C53; margin-top: 12px; }
+  .error { background: #FCEBEB; border: 1px solid #F7C1C1; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #791F1F; display: none; margin-top: 8px; }
+  #status { font-size: 11px; color: #888; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🏦 Canton KYC Dashboard</h1>
+  <p>Built on Canton Network · Daml Smart Contracts · Privacy-preserving by design</p>
+</div>
+<div class="grid">
+  <div class="stat"><div class="stat-num" id="totalCount">—</div><div class="stat-lbl">Total KYC Records</div></div>
+  <div class="stat"><div class="stat-num" id="approvedCount">—</div><div class="stat-lbl">Approved</div></div>
+  <div class="stat"><div class="stat-num" id="pendingCount">—</div><div class="stat-lbl">Pending Review</div></div>
+</div>
+<div class="card">
+  <div class="card-title">Connect to Canton Sandbox</div>
+  <div class="url-bar">http://localhost:7575/v2/query</div>
+  <button class="connect-btn" onclick="loadContracts()">🔌 Load Live Contracts</button>
+  <div id="status">Start dpm sandbox then click above</div>
+  <div class="error" id="errorBox">Cannot reach Canton sandbox. Make sure dpm sandbox is running on port 7575.</div>
+</div>
+<div class="card">
+  <div class="card-title">KYC Records</div>
+  <div id="contractList">
+    <div class="kyc-row"><div><div class="name">Alice Johnson</div><div class="bank">HSBC · PASSPORT · GB123456789</div></div><span class="badge Approved">Approved</span></div>
+    <div class="kyc-row"><div><div class="name">Bob Smith</div><div class="bank">Barclays · NATIONAL_ID · US987654321</div></div><span class="badge Pending">Pending</span></div>
+    <div class="kyc-row"><div><div class="name">Carol White</div><div class="bank">HSBC · DRIVING_LICENSE · UK555444333</div></div><span class="badge Rejected">Rejected</span></div>
+  </div>
+</div>
+<div class="privacy-note">
+  🔒 <strong>Canton Privacy Model:</strong> Each KYC record is only visible to the bank (signatory) and the customer (observer).
+</div>
+<script>
+async function loadContracts() {
+  document.getElementById("status").textContent = "Connecting to Canton sandbox...";
+  document.getElementById("errorBox").style.display = "none";
+  try {
+    const res = await fetch("http://localhost:7575/v2/query", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({templateIds: ["daml-canton-app:KYC:KYCRecord"]})
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    const contracts = data.results || [];
+    document.getElementById("totalCount").textContent    = contracts.length;
+    document.getElementById("approvedCount").textContent = contracts.filter(c => c.payload.status.tag === "Approved").length;
+    document.getElementById("pendingCount").textContent  = contracts.filter(c => c.payload.status.tag === "Pending").length;
+    const list = document.getElementById("contractList");
+    if (contracts.length > 0) {
+      list.innerHTML = contracts.map(c => {
+        const p = c.payload;
+        const status = p.status.tag;
+        return `<div class="kyc-row"><div><div class="name">${p.fullName}</div><div class="bank">${p.documentType} · ${p.documentId}</div></div><span class="badge ${status}">${status}</span></div>`;
+      }).join("");
+    }
+    document.getElementById("status").textContent = `✅ Loaded ${contracts.length} live contract(s) from Canton sandbox`;
+  } catch (err) {
+    document.getElementById("errorBox").style.display = "block";
+    document.getElementById("status").textContent = "❌ Connection failed — showing demo data";
+  }
+}
+</script>
+</body>
+</html>
