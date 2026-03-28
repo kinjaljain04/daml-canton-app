@@ -1,0 +1,9 @@
+sdk-version: 3.4.0
+name: daml-canton-app
+version: 1.0.0
+source: daml
+dependencies:
+  - daml-prim
+  - daml-stdlib
+test-dependencies:
+  - daml-script
